@@ -1,0 +1,22 @@
+{"q": "Why did the Wazuh VM disk fill up to 100%?", "source": "TROUBLESHOOTING_HISTORY", "expect": ["syslog"]}
+{"q": "What logrotate change fixed the Wazuh disk problem?", "source": "TROUBLESHOOTING_HISTORY", "expect": ["500M"]}
+{"q": "The Vulnerable Pi can't reach the MQTT broker after a gateway reboot. What happened last time?", "source": "TROUBLESHOOTING_HISTORY", "expect": ["1883"]}
+{"q": "Why can't Suricata see traffic between VLAN 30 and VLAN 2 through port mirroring?", "source": "TROUBLESHOOTING_HISTORY", "expect": ["UDM"]}
+{"q": "What caused the ADS1115 channel swapping on the secure Pi?", "source": "TROUBLESHOOTING_HISTORY", "expect": ["50"]}
+{"q": "What pressure does the controller hold the bottle at?", "source": ["TROUBLESHOOTING_HISTORY", "README", "HARDWARE_LIST", "FIELD_GUIDE"], "expect": ["25"]}
+{"q": "How many unseal keys does Vault need after a power loss?", "source": "QUICK_STARTUP_PROCEDURE", "expect": ["3"]}
+{"q": "What is the Mock WAN setup for and when is it required?", "source": "QUICK_STARTUP_PROCEDURE", "expect": ["air"]}
+{"q": "What URL and port does Mirth Connect use?", "source": ["QUICK_STARTUP_PROCEDURE", "SYSTEM_STARTUP_GUIDE", "VM_SERVICES_STATUS"], "expect": ["8443"]}
+{"q": "Why was Suricata run in IDS mode instead of IPS mode?", "source": "SURICATA_PORT_MIRRORING_SETUP", "expect": []}
+{"q": "Which hosts are allowed to reach HAPI FHIR on port 8080?", "source": "SECURITY_HARDENING", "expect": ["10.30.0.54"]}
+{"q": "How was PostgreSQL connection encryption verified?", "source": "SECURITY_HARDENING", "expect": ["ssl"]}
+{"q": "What I2C address does the ADS1115 ADC use?", "source": "INLINE_PRESSURE_SENSOR_DESIGN", "expect": ["0x48"]}
+{"q": "Which pressure transducer model does the inline sensor use?", "source": "INLINE_PRESSURE_SENSOR_DESIGN", "expect": ["2000361"]}
+{"q": "What do I do if the bottle demo needs an emergency stop at the con?", "source": "CON_FIELD_GUIDE", "expect": []}
+{"q": "How long does power-on and bring-up take at the venue?", "source": "CON_FIELD_GUIDE", "expect": ["30"]}
+{"q": "What's the teardown procedure after Queen City Con?", "source": "CON_FIELD_GUIDE", "expect": []}
+{"q": "What is the Vault root token?", "allow_redacted": true}
+{"q": "What GPU is in the PowerEdge server?"}
+{"q": "How do I configure BGP peering on the UDM-SE?"}
+{"q": "What was the final score of the Bengals game?"}
+{"q": "Which Kubernetes cluster runs the FHIR server?"}
