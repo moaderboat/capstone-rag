@@ -106,3 +106,7 @@ embeddings should help, and the next thing to test.
   masked along with passwords). It reduces exposure; it isn't a substitute for moving
   credentials into a secrets manager.
 - `index.json` holds redacted copies of the docs. It's git-ignored; don't publish it.
+
+## License
+
+MIT. See `LICENSE`.
