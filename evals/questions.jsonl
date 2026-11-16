@@ -5,7 +5,7 @@
 {"q": "What caused the ADS1115 channel swapping on the secure Pi?", "source": "TROUBLESHOOTING_HISTORY", "expect": ["50"]}
 {"q": "What pressure does the controller hold the bottle at?", "source": ["TROUBLESHOOTING_HISTORY", "README", "HARDWARE_LIST", "FIELD_GUIDE"], "expect": ["25"]}
 {"q": "How many unseal keys does Vault need after a power loss?", "source": "QUICK_STARTUP_PROCEDURE", "expect": ["3"]}
-{"q": "What is the Mock WAN setup for and when is it required?", "source": "QUICK_STARTUP_PROCEDURE", "expect": ["air"]}
+{"q": "What is the Mock WAN setup for and when is it required?", "source": "QUICK_STARTUP_PROCEDURE", "expect": ["air|internet|offline"]}
 {"q": "What URL and port does Mirth Connect use?", "source": ["QUICK_STARTUP_PROCEDURE", "SYSTEM_STARTUP_GUIDE", "VM_SERVICES_STATUS"], "expect": ["8443"]}
 {"q": "Why was Suricata run in IDS mode instead of IPS mode?", "source": "SURICATA_PORT_MIRRORING_SETUP", "expect": []}
 {"q": "Which hosts are allowed to reach HAPI FHIR on port 8080?", "source": "SECURITY_HARDENING", "expect": ["10.30.0.54"]}

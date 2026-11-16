@@ -13,7 +13,7 @@ class OllamaUnavailable(RuntimeError):
     pass
 
 
-def _post(path: str, payload: dict, timeout: float = 300):
+def _post(path: str, payload: dict, timeout: float = 120):
     req = urllib.request.Request(
         HOST + path, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}
     )
@@ -24,12 +24,19 @@ def _post(path: str, payload: dict, timeout: float = 300):
         raise OllamaUnavailable(f"Can't reach Ollama at {HOST}: {e}") from e
 
 
+_available = None
+
+
 def available() -> bool:
-    try:
-        with urllib.request.urlopen(HOST + "/api/tags", timeout=2):
-            return True
-    except Exception:
-        return False
+    """Checked once per run, so a down server costs one 2-second timeout, not one per question."""
+    global _available
+    if _available is None:
+        try:
+            with urllib.request.urlopen(HOST + "/api/tags", timeout=2):
+                _available = True
+        except Exception:
+            _available = False
+    return _available
 
 
 def embed(texts: list[str], model: str = EMBED_MODEL, batch: int = 32) -> list[list[float]]:

@@ -5,6 +5,7 @@ embedding similarity (paraphrased questions) using reciprocal rank fusion.
 If Ollama isn't running, search falls back to BM25 alone.
 """
 import fnmatch
+import os
 import hashlib
 import json
 import math
@@ -25,6 +26,9 @@ TOKEN = re.compile(r"[a-z0-9][a-z0-9_.:\-/]*[a-z0-9]|[a-z0-9]")
 STOP = set("a an and are as at be by for from has have how i in is it of on or that the this "
            "to was what when where which who why will with does do did can should my".split())
 DOC_PREFIX, QUERY_PREFIX = "search_document: ", "search_query: "
+# How much the embedding ranking counts relative to BM25 in the fused score.
+# 1.0 = equal; 0 = keyword-only (default, chosen by eval --sweep). Tune with: python rag.py eval --sweep
+VEC_WEIGHT = float(os.environ.get("RAG_VEC_WEIGHT", "0.0"))  # sweep on capstone docs: keyword-only won
 
 
 def tokenize(text: str) -> list[str]:
@@ -124,15 +128,25 @@ class Index:
         self.meta = {k: v for k, v in data.items() if k not in ("chunks", "vectors")}
         self.chunks = [Chunk(**c) for c in data["chunks"]]
         self.vectors = data.get("vectors")
+        self._qcache = {}
         self.bm25 = BM25([tokenize(f"{c.source} {c.heading} {c.text}") for c in self.chunks])
 
-    def search(self, query: str, k: int = 6, rrf_k: int = 60) -> list[dict]:
+    def query_vector(self, query: str):
+        if not (self.vectors and ollama.available()):
+            return None
+        if query not in self._qcache:
+            self._qcache[query] = ollama.embed([QUERY_PREFIX + query], model=self.meta["embed_model"])[0]
+        return self._qcache[query]
+
+    def search(self, query: str, k: int = 6, rrf_k: int = 60, use_vectors: bool = True,
+               vec_weight: float = None) -> list[dict]:
         """Return top-k hits with their bm25 / cosine scores and fused rank."""
+        w = VEC_WEIGHT if vec_weight is None else vec_weight
         bm = self.bm25.scores(tokenize(query))
         bm_rank = sorted(range(len(bm)), key=lambda i: -bm[i])
         cos = None
-        if self.vectors and ollama.available():
-            qv = ollama.embed([QUERY_PREFIX + query], model=self.meta["embed_model"])[0]
+        qv = self.query_vector(query) if use_vectors and w > 0 else None
+        if qv is not None:
             cos = [_cos(qv, v) for v in self.vectors]
             vec_rank = sorted(range(len(cos)), key=lambda i: -cos[i])
         fused = Counter()
@@ -141,7 +155,7 @@ class Index:
                 fused[i] += 1 / (rrf_k + r)
         if cos:
             for r, i in enumerate(vec_rank[:100]):
-                fused[i] += 1 / (rrf_k + r)
+                fused[i] += w / (rrf_k + r)
         top = [i for i, _ in fused.most_common(k)]
         best_bm = bm[bm_rank[0]] if bm_rank else 0
         return [{

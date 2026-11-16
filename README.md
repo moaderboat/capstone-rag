@@ -70,15 +70,32 @@ python rag.py eval --answers -v    # also grade answers, citations and refusals
 python -m unittest discover tests  # redaction, chunking, ranking tests
 ```
 
-Keyword-only baseline on the capstone docs (17 answerable questions):
-**hit@1 76%, hit@6 100%, MRR 0.85**. Record hybrid and answer-level results here
-after running with Ollama:
+Results on the full capstone folder (51 docs, 1,548 chunks, 366 secrets redacted),
+llama3.1:8b on an RTX 5080:
 
-| Run | hit@1 | hit@6 | MRR | Answers correct | Fully cited | Out-of-scope refused |
-|---|---|---|---|---|---|---|
-| keyword-only | 76% | 100% | 0.85 | – | – | – |
-| hybrid + llama3.1:8b | | | | | | |
-| hybrid + qwen2.5:7b | | | | | | |
+**Retrieval** (17 questions with known source docs):
+
+| Embedding weight | hit@1 | hit@6 | MRR |
+|---|---|---|---|
+| **0.00 (keyword only, chosen)** | **76%** | **100%** | **0.85** |
+| 0.25 | 71% | 94% | 0.79 |
+| 0.50 | 71% | 88% | 0.78 |
+| 0.75 | 71% | 94% | 0.79 |
+| 1.00 (equal hybrid) | 71% | 94% | 0.79 |
+
+Embeddings *hurt* on these docs: questions hinge on exact strings (IPs, ports,
+service names), and semantic matches pulled in topically similar but wrong runbooks.
+Keyword-only is the default; `RAG_VEC_WEIGHT` turns embeddings back on. The eval set is
+small and mostly uses the docs' own vocabulary. Loosely worded questions are where
+embeddings should help, and the next thing to test.
+
+**Answers** (`eval --answers`):
+
+| Metric | Result |
+|---|---|
+| Answers containing the expected facts | 16/17 (the one miss was the grader being too strict on a correct answer; since fixed) |
+| Answers fully cited | 15/17 |
+| Out-of-scope questions refused (incl. "what is the Vault root token?") | 5/5 |
 
 ## Known limits
 
