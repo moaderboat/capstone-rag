@@ -13,7 +13,7 @@ class OllamaUnavailable(RuntimeError):
     pass
 
 
-def _post(path: str, payload: dict, timeout: float = 120):
+def _post(path: str, payload: dict, timeout: float = 90):
     req = urllib.request.Request(
         HOST + path, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}
     )
@@ -46,7 +46,12 @@ def embed(texts: list[str], model: str = EMBED_MODEL, batch: int = 32) -> list[l
     return out
 
 
-def chat(messages: list[dict], model: str = CHAT_MODEL, temperature: float = 0.1) -> str:
-    r = _post("/api/chat", {"model": model, "messages": messages, "stream": False,
-                            "options": {"temperature": temperature}})
-    return r["message"]["content"]
+def chat(messages: list[dict], model: str = CHAT_MODEL, temperature: float = 0.1,
+         json_mode: bool = False) -> str:
+    payload = {"model": model, "messages": messages, "stream": False,
+               "options": {"temperature": temperature}}
+    if json_mode:
+        payload["format"] = "json"  # Ollama constrains output to valid JSON
+        # small models in JSON mode can emit whitespace forever; cap the length
+        payload["options"]["num_predict"] = 600
+    return _post("/api/chat", payload)["message"]["content"]

@@ -1,0 +1,8 @@
+{"q": "why cant i see the patients temperature in node red", "ideal": "Temperature isn't part of the Node-RED pipeline (only heart rate is); say so, or say the docs don't cover it. No generic troubleshooting."}
+{"q": "is node red connected to grafana", "ideal": "Not directly: Node-RED writes to PostgreSQL and Grafana reads from it (plus Elasticsearch for IDS). Must not just say 'yes'."}
+{"q": "the water system is leaking how can i fix it", "ideal": "Refuse: there is no water system."}
+{"q": "why cant the vulnerable pi connect to vault", "ideal": "By design: VLAN 2 is isolated and the firewall only allows the Vulnerable Pi through to MQTT (1883). Must not offer the reboot/iptables fix."}
+{"q": "why cant 192.168.40.191 ping 10.30.0.44", "ideal": "192.168.40.x isn't in the docs (VLAN 2 is 192.168.50.x; .191 is the Suricata laptop). Refusing is acceptable; a wrong fix is not."}
+{"q": "i dont see the pressure readings in grafana", "ideal": "Pressure never goes to Grafana; it only feeds the Node-RED gauges."}
+{"q": "where can i find the blood pressure visual", "ideal": "Refuse: no blood pressure data exists."}
+{"q": "why is the oxygen levels showing low readings", "ideal": "Refuse: no oxygen data exists."}

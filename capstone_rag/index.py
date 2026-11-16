@@ -27,8 +27,43 @@ STOP = set("a an and are as at be by for from has have how i in is it of on or t
            "to was what when where which who why will with does do did can should my".split())
 DOC_PREFIX, QUERY_PREFIX = "search_document: ", "search_query: "
 # How much the embedding ranking counts relative to BM25 in the fused score.
-# 1.0 = equal; 0 = keyword-only (default, chosen by eval --sweep). Tune with: python rag.py eval --sweep
-VEC_WEIGHT = float(os.environ.get("RAG_VEC_WEIGHT", "0.0"))  # sweep on capstone docs: keyword-only won
+# 1.0 = equal; 0 = keyword-only. Default 0.25, chosen by eval --sweep (README). Tune with: python rag.py eval --sweep
+VEC_WEIGHT = float(os.environ.get("RAG_VEC_WEIGHT", "0.25"))  # see README: recall vs. rank trade-off
+
+
+# Small domain thesaurus: users describe symptoms in words the runbooks don't use.
+SYNONYMS = {
+    "readings": ["data", "values", "reads", "gauges"], "reading": ["data", "value", "reads", "gauge"],
+    "data": ["readings"], "sensor": ["gauge", "reads"], "sensors": ["gauges", "reads"],
+    "gauge": ["readings"], "gauges": ["readings"],
+    "broken": ["not", "failing", "fix"], "down": ["not", "failing"], "dead": ["not", "down"],
+    "missing": ["no", "not"], "nothing": ["no"], "empty": ["no"],
+    "pressure": ["balloon", "bottle", "psi"], "bottle": ["balloon", "pressure"], "balloon": ["bottle"],
+    "dashboard": ["grafana", "node-red", "ui"], "graph": ["dashboard", "grafana"],
+    "grafana": ["dashboard"], "node-red": ["dashboard"],
+    "heart": ["heartrate", "hr"], "heartrate": ["hr", "heart"], "vitals": ["heartrate", "hr"],
+    "ids": ["suricata"], "siem": ["wazuh"], "sso": ["keycloak"], "login": ["keycloak", "sso"],
+    "secrets": ["vault"], "sealed": ["unseal", "vault"], "firewall": ["udm", "rule"],
+    "reboot": ["restart", "power"], "restart": ["reboot", "systemctl"],
+}
+SYMPTOM_Q = re.compile(r"(?i)\b(no|not|isn'?t|aren'?t|won'?t|can'?t|doesn'?t|don'?t|broken|missing|nothing|"
+                       r"fail\w*|error\w*|stuck|down|dead|empty|wrong)\b")
+FIX_SECTION = re.compile(r"(?i)troubleshoot|common issues|issue:|symptom|problem|fixed|resolved|fix:|"
+                         r"root cause|not (working|receiving|showing|loading|publishing)|shows no")
+SYMPTOM_BOOST = 1.6  # symptom-style questions favor troubleshooting/fix sections
+HEADING_BOOST = 3  # heading words count 3x: runbook headings name the symptom
+
+
+SYNONYM_WEIGHT = 0.35  # synonyms help, but must never outweigh the words the user typed
+
+
+def expand(tokens: list[str]) -> list[tuple[str, float]]:
+    """Query terms with weights: typed words 1.0, synonyms SYNONYM_WEIGHT."""
+    out = [(t, 1.0) for t in tokens]
+    typed = set(tokens)
+    for t in tokens:
+        out.extend((syn, SYNONYM_WEIGHT) for syn in SYNONYMS.get(t, []) if syn not in typed)
+    return out
 
 
 def tokenize(text: str) -> list[str]:
@@ -53,14 +88,30 @@ class BM25:
         n = len(docs)
         self.idf = {t: math.log(1 + (n - f + 0.5) / (f + 0.5)) for t, f in df.items()}
 
-    def scores(self, q: list[str]) -> list[float]:
+    PREFIX_WEIGHT = 0.7
+
+    def _with_prefixes(self, q):
+        """Partial words ("postgre", "keycl") match indexed words that start with them."""
+        out = []
+        for t, w in q:
+            out.append((t, w))
+            if t not in self.idf and len(t) >= 4 and not t[0].isdigit():
+                matches = [v for v in self.idf if v.startswith(t)]
+                for v in sorted(matches, key=lambda v: -self.idf[v])[:5]:
+                    out.append((v, w * self.PREFIX_WEIGHT))
+        return out
+
+    def scores(self, q) -> list[float]:
+        """q: list of terms, or of (term, weight) pairs."""
+        q = [(t, 1.0) if isinstance(t, str) else t for t in q]
+        q = self._with_prefixes(q)
         out = []
         for tf, dl in zip(self.tf, self.len):
             s = 0.0
-            for t in q:
+            for t, w in q:
                 f = tf.get(t)
                 if f:
-                    s += self.idf[t] * f * (self.k1 + 1) / (f + self.k1 * (1 - self.b + self.b * dl / self.avg))
+                    s += w * self.idf[t] * f * (self.k1 + 1) / (f + self.k1 * (1 - self.b + self.b * dl / self.avg))
             out.append(s)
         return out
 
@@ -129,7 +180,19 @@ class Index:
         self.chunks = [Chunk(**c) for c in data["chunks"]]
         self.vectors = data.get("vectors")
         self._qcache = {}
-        self.bm25 = BM25([tokenize(f"{c.source} {c.heading} {c.text}") for c in self.chunks])
+        self._is_fix = [bool(FIX_SECTION.search(c.heading) or FIX_SECTION.search(c.text[:300]))
+                        for c in self.chunks]
+        self.bm25 = BM25([tokenize(f"{c.source} {c.text}") + tokenize(c.heading) * HEADING_BOOST
+                          for c in self.chunks])
+
+    FLOW = re.compile(r"→|->|──▶|=>")
+
+    def flow_chunks(self, query: str, k: int = 4) -> list[dict]:
+        """Best-matching chunks that contain data-flow arrows (pipeline / architecture notes)."""
+        bm = self.bm25.scores(expand(tokenize(query + " pipeline data flow architecture")))
+        idx = [i for i in sorted(range(len(bm)), key=lambda i: -bm[i])
+               if bm[i] > 0 and len(self.FLOW.findall(self.chunks[i].text)) >= 2][:k]
+        return [{"chunk": self.chunks[i], "bm25": bm[i], "bm25_rel": 0.0, "cosine": None} for i in idx]
 
     def query_vector(self, query: str):
         if not (self.vectors and ollama.available()):
@@ -142,7 +205,9 @@ class Index:
                vec_weight: float = None) -> list[dict]:
         """Return top-k hits with their bm25 / cosine scores and fused rank."""
         w = VEC_WEIGHT if vec_weight is None else vec_weight
-        bm = self.bm25.scores(tokenize(query))
+        bm = self.bm25.scores(expand(tokenize(query)))
+        if SYMPTOM_Q.search(query):
+            bm = [b * SYMPTOM_BOOST if self._is_fix[i] else b for i, b in enumerate(bm)]
         bm_rank = sorted(range(len(bm)), key=lambda i: -bm[i])
         cos = None
         qv = self.query_vector(query) if use_vectors and w > 0 else None

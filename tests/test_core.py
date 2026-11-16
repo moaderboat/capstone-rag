@@ -72,5 +72,49 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(max(range(3), key=lambda i: scores[i]), 2)
 
 
+class SmallModelJsonTests(unittest.TestCase):
+    """8B models are loose with JSON types; parsing must not silently drop good data."""
+
+    def test_source_numbers(self):
+        from capstone_rag.answer import _num
+        for v in (3, "3", "[3]", [3], "source 3"):
+            self.assertEqual(_num(v), 3)
+        for v in (None, [], True, "none"):
+            self.assertIsNone(_num(v))
+
+    def test_yes_values(self):
+        from capstone_rag.answer import _yes
+        self.assertTrue(all(_yes(v) for v in (True, "true", "Yes.", "yes")))
+        self.assertFalse(any(_yes(v) for v in (False, "false", "no", None)))
+
+
+class MetaClaimTests(unittest.TestCase):
+    def test_source_descriptions_are_meta(self):
+        from capstone_rag.answer import META_CLAIM
+        for t in ("Raspberry Pi models are listed in [5]", "A Mermaid diagram in [8] shows the data flow",
+                  "Source [3] describes the startup"):
+            self.assertTrue(META_CLAIM.search(t), t)
+
+    def test_facts_are_not_meta(self):
+        from capstone_rag.answer import META_CLAIM
+        for t in ("Raspberry Pi #6 uses the Raspberry Pi 5 8GB model", "Grafana is connected to PostgreSQL",
+                  "The UDM-SE firewall rules are listed in rules.v4", "Node-RED shows the heart rate gauges"):
+            self.assertFalse(META_CLAIM.search(t), t)
+
+
+class PremiseQuoteTests(unittest.TestCase):
+    SRC = "BALLOON / BOTTLE\nBoth → MQTT → Node-RED gauges + Security Status panel\n\nIDS\n... → Grafana IDS dashboard"
+
+    def test_exact_and_formatting_differences_pass(self):
+        from capstone_rag.answer import quote_in_source
+        self.assertTrue(quote_in_source("Both → MQTT → Node-RED gauges + Security Status panel", self.SRC))
+        self.assertTrue(quote_in_source("both → mqtt → **Node-RED gauges** + security status panel", self.SRC))
+
+    def test_invented_quote_fails(self):
+        from capstone_rag.answer import quote_in_source
+        self.assertFalse(quote_in_source("Pressure history is stored in a Grafana panel for 30 days", self.SRC))
+        self.assertFalse(quote_in_source("ok", self.SRC))
+
+
 if __name__ == "__main__":
     unittest.main()

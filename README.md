@@ -3,16 +3,14 @@
 Ask plain-English questions about my hospital IoT security capstone lab and get
 answers **with citations**, from a model running **entirely on my own machine**.
 
-Illustrative example:
+Example (from the held-out test set; the model's false claim is caught and marked):
 
 ```
-> python rag.py ask "The Vulnerable Pi can't reach MQTT after a gateway reboot. What fixed it last time?"
+> python rag.py ask "is node red connected to grafana"
 
-The UDM-SE firewall rules weren't reloaded after the reboot, so traffic from the
-Vulnerable Pi (192.168.50.100) to the broker at 10.30.0.51:1883 was dropped [1]...
-
-Sources:
-  [1] TROUBLESHOOTING_HISTORY.md — UDM-SE Firewall Rules Not Loaded After Reboot
+- Node-RED provides real-time monitoring at http://10.30.0.52:1880/ui [2]
+- Grafana complements Node-RED with long-term historical analysis and alerting [2]
+- Node-RED is connected to Grafana ⚠ unverified
 ```
 
 The lab has 50+ markdown runbooks, build logs and troubleshooting notes written
@@ -22,21 +20,26 @@ is slow, especially at a conference booth with the demo down.
 ## How it works
 
 ```
- docs/*.md ──► redact secrets ──► chunk by heading ──► BM25 index ─┐
-                                                   └► embeddings ──┤  (nomic-embed-text via Ollama)
- question ─────────────────────────────────────────────────────────┴► hybrid search (RRF)
-          ──► retrieval gate ──► local LLM with numbered sources ──► citation check ──► answer
+ docs/*.md ─► redact secrets ─► chunk by heading ─► BM25 index + embeddings (nomic-embed-text)
+
+ question ─► hybrid search (BM25 + 0.25 × embeddings, RRF) ─► 8 sources
+          ─► premise check: does a data-flow doc show the data never reaches the named tool?
+          ─► local LLM drafts an answer from the numbered sources
+          ─► claim verification: split into claims; each is checked against ONE source,
+             with the same question, and must come with a quote that really appears there
+          ─► verified claims cite their source; the rest are marked ⚠ unverified
 ```
 
 | Design choice | Why |
 |---|---|
 | **Local model (Ollama)** | Lab docs describe a hospital network: IPs, firewall rules, credentials. Nothing leaves the machine. |
-| **Secrets redacted at ingest** | Lab notes contained plaintext passwords and a Vault root token. Redaction runs before anything is indexed or sent to a model, and any password found next to a label is then scrubbed everywhere it appears. In testing on 24 of the lab docs it removed 259 secrets, and a check confirmed none survived in the index. |
-| **Hybrid retrieval** | Keyword search (BM25) nails exact strings like `10.30.0.54` or `balloon-control-api.service`; embeddings catch paraphrased questions. Fused with reciprocal rank fusion. Falls back to keyword-only if Ollama is down. |
-| **Heading-aware chunking** | Each chunk keeps its section path, so citations point somewhere a person can actually go read. `#` comments inside code blocks aren't mistaken for headings. |
-| **Two-stage refusal** | A retrieval gate refuses before calling the model when nothing relevant was found; the model is told to answer `NOT_IN_DOCS` otherwise. Out-of-scope questions get "I couldn't find that", not a guess. |
-| **Citation check** | Every `[n]` must point at a real source. Answers with no citations or bogus ones are flagged as unverified. |
-| **Eval set** | `evals/questions.jsonl`: questions with known source docs and expected facts, plus out-of-scope questions that must be refused. |
+| **Secrets redacted at ingest** | Lab notes contained plaintext passwords and a Vault root token. Redaction runs before anything is indexed or sent to a model, and a password found next to a label is scrubbed everywhere it appears. 366 secrets removed from 51 docs; a check confirmed none survived in the index. |
+| **Hybrid retrieval, tuned by measurement** | Keyword search nails exact strings (`10.30.0.54`); embeddings find paraphrased questions. The weight was chosen by sweeping it on two eval rounds (see below). Partial words match ("postgre" → postgresql); synonyms count at a third of a typed word. |
+| **Heading-aware chunking** | Each chunk keeps its section path, so citations point somewhere a person can go read. Section titles count 3× in ranking, since runbook headings name the symptom. |
+| **Per-claim verification** | A citation alone doesn't prove anything: early versions cited sources that didn't say what the answer claimed. Each claim is checked against only the source it came from (uncited claims are matched to their likeliest source), including whether that source is about the *same situation* as the question. The model must quote its evidence, and code confirms the quote exists. |
+| **Label, don't delete** | Deleting unverified claims (strict mode) blocked correct answers. Default mode shows everything but marks what couldn't be verified. |
+| **Robust to small-model JSON** | 8B models write `"3"`, `"[3]"`, `"yes"`, or stall in JSON mode. Parsing tolerates all of these, output length is capped, and a stalled check counts as "unverified", never a crash. Covered by unit tests. |
+| **Refusal** | Out-of-scope questions ("what was the Bengals score?", "where's the oxygen chart?") get "I couldn't find that", not a guess. |
 
 ## Setup (Windows)
 
@@ -59,52 +62,85 @@ python rag.py search "suricata port mirroring"     # retrieval only, no model
 python rag.py ask "..." --model qwen2.5:7b          # compare models
 ```
 
-Settings via environment variables: `RAG_CHAT_MODEL`, `RAG_EMBED_MODEL`, `OLLAMA_HOST`,
-`RAG_MIN_BM25`, `RAG_MIN_COSINE`.
+Add `--debug` to see retrieval, the premise check, every claim and why it was or wasn't verified.
+
+Settings (environment variables): `RAG_VERIFY` = `label` (default) / `strict` / `0`,
+`RAG_VEC_WEIGHT` (default 0.25), `RAG_CHAT_MODEL`, `RAG_EMBED_MODEL`, `OLLAMA_HOST`.
 
 ## Evaluate
 
 ```
 python rag.py eval                 # retrieval: hit@1, hit@6, MRR
+python rag.py eval --sweep         # compare embedding weights
 python rag.py eval --answers -v    # also grade answers, citations and refusals
+python rag.py holdout              # questions written after tuning, graded by hand
 python -m unittest discover tests  # redaction, chunking, ranking tests
 ```
 
 Results on the full capstone folder (51 docs, 1,548 chunks, 366 secrets redacted),
 llama3.1:8b on an RTX 5080:
 
-**Retrieval** (17 questions with known source docs):
+**Retrieval.** Embedding weight swept from 0 (keyword only) to 1 (equal hybrid).
 
-| Embedding weight | hit@1 | hit@6 | MRR |
+Round 1: 17 questions, mostly worded the way the docs are:
+
+| Weight | hit@1 | hit@6 | MRR |
 |---|---|---|---|
-| **0.00 (keyword only, chosen)** | **76%** | **100%** | **0.85** |
+| 0.00 | **76%** | **100%** | **0.85** |
 | 0.25 | 71% | 94% | 0.79 |
-| 0.50 | 71% | 88% | 0.78 |
-| 0.75 | 71% | 94% | 0.79 |
-| 1.00 (equal hybrid) | 71% | 94% | 0.79 |
+| 1.00 | 71% | 94% | 0.79 |
 
-Embeddings *hurt* on these docs: questions hinge on exact strings (IPs, ports,
-service names), and semantic matches pulled in topically similar but wrong runbooks.
-Keyword-only is the default; `RAG_VEC_WEIGHT` turns embeddings back on. The eval set is
-small and mostly uses the docs' own vocabulary. Loosely worded questions are where
-embeddings should help, and the next thing to test.
+Round 2: 26 questions, adding natural, paraphrased questions written after round 1
+("where do the VMs run", "what VMs are connected to postgre"), scored by whether the
+retrieved text contains the answer:
 
-**Answers** (`eval --answers`):
+| Weight | hit@1 | hit@6 | MRR |
+|---|---|---|---|
+| 0.00 | **73%** | 92% | **0.80** |
+| **0.25 (chosen)** | 65% | **96%** | 0.76 |
+| 0.50 | 62% | 96% | 0.75 |
+| 1.00 | 58% | 96% | 0.75 |
 
-| Metric | Result |
-|---|---|
-| Answers containing the expected facts | 16/17 (the one miss was the grader being too strict on a correct answer; since fixed) |
-| Answers fully cited | 15/17 |
-| Out-of-scope questions refused (incl. "what is the Vault root token?") | 5/5 |
+Round 1 said embeddings hurt, but that eval was biased toward exact wording. With
+real paraphrased questions, embeddings find sections keyword search misses (top-6
+recall up), at the cost of ranking (hit@1 down). Since the model reads 8 sources and
+every claim is verified, **recall matters more than rank 1**, so the default is 0.25.
+With 26 questions, one question is about 4 points, so these are directional.
 
-## Known limits
+**Answers** (26 questions with known answers + 6 that must be refused), llama3.1:8b:
 
-- The keyword gate alone can't tell an in-domain question with no answer ("what GPU is in
-  the PowerEdge?") from a real one; the model's `NOT_IN_DOCS` step does that, and the
-  eval measures how often it works.
-- Redaction is pattern-based and errs toward over-masking (a username or two gets
-  masked along with passwords). It reduces exposure; it isn't a substitute for moving
-  credentials into a secrets manager.
+| Verification | Correct facts | Fully cited | Out-of-scope refused |
+|---|---|---|---|
+| off (citation check only) | 23/26 | 21/26 | 6/6 |
+| **label (default)** | **24/26** | 23/26 | **6/6** |
+| strict (verified claims only) | 22/26 | **26/26** | 6/6 |
+
+**Held-out questions** (`evals/holdout.jsonl`, written by me after tuning, mostly false
+premises such as "why can't I see the pressure readings in Grafana" when pressure never goes
+to Grafana). Before claim verification: 3 of 8 answered confidently and wrongly. After: 0
+wrong statements presented as fact. False claims the model still drafts appear marked
+⚠ unverified, and the rest are correct or safe refusals.
+
+What didn't work, and why it changed:
+- **Prompt rules alone** ("check the question's assumptions") failed on both llama3.1:8b and
+  qwen2.5:14b; a narrow, separate check works better than one long instruction list.
+- **Strict verification v1** dropped correct answers from 23/26 to about 13/26 because the
+  claim splitter lost citations; fixed by matching uncited claims to their likeliest source.
+- **Round-1 retrieval eval** used the docs' own wording and favored keyword search; natural
+  questions reversed that conclusion.
+
+## Known limitations
+
+- **Slow:** verification costs one model call per claim; long answers take 20–30 s on an RTX 5080.
+- **Only as good as the docs:** if something was never written down, it can't be answered.
+  Asking questions surfaces documentation gaps, which is useful in its own right.
+- **Wrong assumptions are marked, not always explained:** for "pressure in Grafana" it marks
+  the false claim but doesn't always say "that data never goes there"; the premise check
+  catches only data-to-tool assumptions.
+- **Small eval:** 26 + 8 questions; one question moves a score by about 4 points, and
+  8B output varies between runs. Treat the numbers as directional.
+- **Redaction is pattern-based** and errs toward over-masking. It reduces exposure; it
+  isn't a substitute for moving credentials into a secrets manager.
 - `index.json` holds redacted copies of the docs. It's git-ignored; don't publish it.
 
 ## License

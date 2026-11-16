@@ -20,3 +20,13 @@
 {"q": "How do I configure BGP peering on the UDM-SE?"}
 {"q": "What was the final score of the Bengals game?"}
 {"q": "Which Kubernetes cluster runs the FHIR server?"}
+{"q": "pressure sensors have power but no readings in grafana", "source": ["CONFERENCE_REFRESHER"], "expect": ["node-red|node red"], "note": "false premise: bottle pressure never goes to Grafana"}
+{"q": "the heart rate gauges in node red are empty", "source": ["QUICK_STARTUP", "CON_FIELD_GUIDE", "SYSTEM_STARTUP"], "expect": ["mqtt|restart"]}
+{"q": "grafana ids dashboard not updating", "source": ["QUICK_STARTUP", "CON_FIELD_GUIDE", "CONFERENCE_REFRESHER"], "expect": []}
+{"q": "what port does node red use", "answer_re": "1880", "expect": ["1880"], "style": "natural"}
+{"q": "where do the VMs run", "answer_re": "truenas|r740", "expect": ["truenas|r740|poweredge"], "style": "natural"}
+{"q": "what protocol do the pressure sensors use as a fall back", "answer_re": "i2c[_ ]?fallback|fall(s)? ?back to (the )?i2c", "expect": ["i2c"], "style": "natural"}
+{"q": "do the sensors use i2c", "answer_re": "ads1115", "expect": ["ads1115|i2c"], "style": "natural"}
+{"q": "what raspberry pi version do i have", "answer_re": "raspberry pi 5|\\bpi 5\\b", "expect": ["5"], "style": "natural"}
+{"q": "what VMs are connected to postgre", "answer_re": "hospital_data.{0,80}(10\\.30\\.0\\.5[236]|grafana|node-?red)", "expect": ["grafana|node-red|node red"], "style": "natural"}
+{"q": "where is the dac on the demo board", "note": "false premise: only an SFP+ DAC cable exists"}
