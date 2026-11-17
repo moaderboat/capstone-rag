@@ -41,18 +41,30 @@ is slow, especially at a conference booth with the demo down.
 | **Robust to small-model JSON** | 8B models write `"3"`, `"[3]"`, `"yes"`, or stall in JSON mode. Parsing tolerates all of these, output length is capped, and a stalled check counts as "unverified", never a crash. Covered by unit tests. |
 | **Refusal** | Out-of-scope questions ("what was the Bengals score?", "where's the oxygen chart?") get "I couldn't find that", not a guess. |
 
-## Setup (Windows)
+## Try it yourself
 
-1. Install [Ollama](https://ollama.com/download), then pull the models:
+The docs it answers from are public in
+[Hospital-IoT-HomeLab](https://github.com/moaderboat/Hospital-IoT-HomeLab)
+(secrets were scrubbed before publishing, and ingest redacts again). Runs on Windows, macOS or Linux.
+
+1. Install [Ollama](https://ollama.com/download), then pull the models
+   (about 5 GB; a GPU with 8 GB+ VRAM is comfortable, CPU-only works but is slow):
    ```
    ollama pull nomic-embed-text
    ollama pull llama3.1:8b
    ```
-2. Python 3.10+ only; no packages to install.
-3. Build the index (redacts, chunks and embeds; a few minutes the first time):
+2. Install Python 3.10+. There are no packages to install.
+3. Clone both repos side by side and build the index (a few minutes the first time):
    ```
-   python rag.py ingest "C:\Users\david\OneDrive\Documents\Fall 25 school\Senior Design I"
+   git clone https://github.com/moaderboat/capstone-rag.git
+   git clone https://github.com/moaderboat/Hospital-IoT-HomeLab.git
+   cd capstone-rag
+   python rag.py ingest ../Hospital-IoT-HomeLab
    ```
+   No GPU? `python rag.py ingest ../Hospital-IoT-HomeLab --keyword-only`, then use
+   `python rag.py search "..."` for retrieval without a model.
+
+To point it at your own docs instead, ingest any folder of markdown files.
 
 ## Use
 
@@ -77,7 +89,8 @@ python rag.py holdout              # questions written after tuning, graded by h
 python -m unittest discover tests  # redaction, chunking, ranking tests
 ```
 
-Results on the full capstone folder (51 docs, 1,548 chunks, 366 secrets redacted),
+Results on my full private capstone folder (51 docs, 1,548 chunks, 366 secrets redacted;
+the public repo has 50 docs, 1,515 chunks),
 llama3.1:8b on an RTX 5080:
 
 **Retrieval.** Embedding weight swept from 0 (keyword only) to 1 (equal hybrid).
