@@ -1,7 +1,8 @@
 # capstone-rag
 
 Ask plain-English questions about my hospital IoT security capstone lab and get
-answers **with citations**, from a model running **entirely on my own machine**.
+answers **with citations**, from a local model (Ollama). Nothing is sent to a cloud AI:
+everything runs on whatever computer you run it on.
 
 Example (from the held-out test set; the model's false claim is caught and marked):
 
@@ -53,7 +54,8 @@ The docs it answers from are public in
    ollama pull nomic-embed-text
    ollama pull llama3.1:8b
    ```
-2. Install Python 3.10+. There are no packages to install.
+2. Install Python 3.10+. There are no packages to install. On Windows, use `py`
+   instead of `python` in the commands below if `python` isn't found.
 3. Clone both repos side by side and build the index (a few minutes the first time):
    ```
    git clone https://github.com/moaderboat/capstone-rag.git
